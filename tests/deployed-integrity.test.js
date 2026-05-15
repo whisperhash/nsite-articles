@@ -30,24 +30,20 @@ beforeAll(() => {
   pubkey = decoded.data;
   files = collectRuntimeFiles();
   if (files.length === 0) {
-    throw new Error('No runtime files found to verify. Did you run `npm run build:vendor`?');
+    throw new Error('No runtime files found to verify. Did you run `npm run build`?');
   }
 });
 
 function collectRuntimeFiles() {
-  const entries = [
-    resolve(repoRoot, 'index.html'),
-    ...walkDir(resolve(repoRoot, 'src')),
-    ...walkDir(resolve(repoRoot, 'styles')),
-    ...walkDir(resolve(repoRoot, 'vendor')),
-  ].filter((p) => statSync(p).isFile());
-
-  return entries.map((abs) => {
-    const buf = readFileSync(abs);
-    const hash = createHash('sha256').update(buf).digest('hex');
-    const path = '/' + relative(repoRoot, abs).split('\\').join('/');
-    return { absPath: abs, path, hash, size: buf.length };
-  });
+  const distDir = resolve(repoRoot, 'dist');
+  return walkDir(distDir)
+    .filter((p) => statSync(p).isFile())
+    .map((abs) => {
+      const buf = readFileSync(abs);
+      const hash = createHash('sha256').update(buf).digest('hex');
+      const path = '/' + relative(distDir, abs).split('\\').join('/');
+      return { absPath: abs, path, hash, size: buf.length };
+    });
 }
 
 function walkDir(dir) {

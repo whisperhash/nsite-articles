@@ -8,9 +8,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:vendor": "node scripts/build-vendor.mjs",
+    "build": "node scripts/build.mjs",
     "dev": "python3 -m http.server 8000",
-    "predeploy": "npm test && npm run build:vendor",
-    "deploy": "deno run -A jsr:@nsyte/cli deploy .",
+    "preview": "python3 -m http.server 8000 -d dist",
+    "predeploy": "npm test && npm run build",
+    "deploy": "deno run -A jsr:@nsyte/cli deploy ./dist",
     "verify:deployed": "RUN_DEPLOYED=1 vitest run tests/deployed-integrity.test.js"
   },
   "dependencies": {
