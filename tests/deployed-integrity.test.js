@@ -11,7 +11,7 @@ const repoRoot = resolve(here, '..');
 
 const npub = process.env.DEPLOY_NPUB;
 const gateway = process.env.NSITE_GATEWAY ?? 'nsite.lol';
-const NSITE_KIND = 34128;
+const NSITE_MANIFEST_KIND = 15128;
 
 let pubkey;
 let files;
@@ -63,19 +63,19 @@ function walkDir(dir) {
 }
 
 describe('deployed integrity', () => {
-  it('every runtime file has a matching kind:34128 event with the correct x tag', async () => {
+  it('site manifest event lists every runtime file with the correct hash', async () => {
     const pool = new SimplePool();
     try {
+      const events = await pool.querySync(RUNTIME_RELAYS, {
+        authors: [pubkey],
+        kinds: [NSITE_MANIFEST_KIND],
+      });
+      expect(events.length, `no kind:${NSITE_MANIFEST_KIND} manifest event found`).toBeGreaterThan(0);
+      const manifest = events.sort((a, b) => b.created_at - a.created_at)[0];
       for (const f of files) {
-        const events = await pool.querySync(RUNTIME_RELAYS, {
-          authors: [pubkey],
-          kinds: [NSITE_KIND],
-          '#d': [f.path],
-        });
-        expect(events.length, `no kind:${NSITE_KIND} event for ${f.path}`).toBeGreaterThan(0);
-        const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
-        const xTag = latest.tags.find((t) => t[0] === 'x')?.[1];
-        expect(xTag, `manifest hash mismatch for ${f.path} (local=${f.hash})`).toBe(f.hash);
+        const pathTag = manifest.tags.find((t) => t[0] === 'path' && t[1] === f.path);
+        expect(pathTag, `no path tag for ${f.path} in manifest ${manifest.id}`).toBeDefined();
+        expect(pathTag[2], `manifest hash mismatch for ${f.path} (local=${f.hash})`).toBe(f.hash);
       }
     } finally {
       try { pool.close(RUNTIME_RELAYS); } catch { /* ignore */ }

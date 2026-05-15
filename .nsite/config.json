@@ -13,5 +13,6 @@
   "publishProfile": false,
   "publishRelayList": true,
   "publishServerList": true,
-  "fallback": "/index.html"
+  "fallback": "/index.html",
+  "bunkerPubkey": "00325587c35acf5fe906d3d313123b30c894127d751ac6e27152885980a9047d"
 }

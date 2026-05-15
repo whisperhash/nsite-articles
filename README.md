@@ -9,7 +9,7 @@ Clicking a card opens the article on [njump.to](https://njump.to) (via a NIP-19
 the visible set via an AND / OR toggle.
 
 The site is built to run entirely in the browser and is deployed as an **nsite**
-(NIP-512 / kind:34128 manifest + blobs on [Blossom](https://github.com/hzrd149/blossom)
+(kind:15128 site manifest + blobs on [Blossom](https://github.com/hzrd149/blossom)
 servers). No runtime CDN dependencies — `nostr-tools` is bundled into the repo.
 
 ## Stack
@@ -72,6 +72,7 @@ npm run test:watch      # vitest watch mode
 Default `npm test` runs (sub-second):
 - `filters.test.js` — pure-function coverage of tag extraction / counts / AND-OR filter.
 - `state.test.js` — pub/sub store: get, object & functional update, multi-subscriber, unsubscribe.
+- `relays.test.js` — asserts `RUNTIME_RELAYS` includes a profile-aggregator relay (otherwise kind:0 coverage drops and cards render as gradient placeholders).
 - `nostr-client.test.js` — paginated fetch + profile lookup against a mock `SimplePool`.
 - `render.test.js` — jsdom; cards, whole-card link, hashtag list, mode toggle, integration with state + filters.
 - `build.test.js` — invokes `scripts/build.mjs` into a temp dir, asserts the inlined bundle parses, the placeholders are gone, and the script element has no `src` attribute.
@@ -96,8 +97,8 @@ You'll need:
    ```
 
 4. Amber will prompt to approve the connection on your phone — tap approve.
-5. **Grant standing approval for `kind:34128`** in Amber's session view for this
-   app. Without this, every deploy prompts on your phone once per file.
+5. **Grant standing approval for `kind:15128`** in Amber's session view for this
+   app. Without this, every deploy prompts on your phone.
 
 nsyte stores the bunker pubkey and references it from `.nsite/config.json`;
 the secret stays in your OS keychain.
@@ -113,7 +114,8 @@ This runs `predeploy` (tests + `build`) and then `nsyte deploy ./dist`:
   (which transitively pulls in `vendor/nostr-tools.js`) into a single
   `dist/index.html`.
 - nsyte uploads that single blob to the Blossom servers in `.nsite/config.json`
-  and publishes one `kind:34128` event for `/index.html` to the relays.
+  and publishes one `kind:15128` site manifest event (with a `path` tag for
+  `/index.html`) to the relays.
 
 Because the deployable artifact is one file, the deploy is atomic — there's no
 window where a partly-updated set of files can serve a broken page.
@@ -131,8 +133,9 @@ DEPLOY_NPUB=npub1abc... npm run verify:deployed
 
 Optional: `NSITE_GATEWAY=npub.site npm run verify:deployed` to point at a
 different gateway. For each file under `dist/`:
-1. Queries relays for a `kind:34128` event with matching `d` tag; asserts the
-   event's `x` (sha256) tag equals the local file hash.
+1. Queries relays for the `kind:15128` site manifest event; asserts that for
+   each local file there's a `["path", <path>, <sha256>]` tag whose sha256
+   matches the local file hash.
 2. `fetch`es the gateway URL and asserts the response body sha256 matches.
 
 This catches Blossom upload failures, stale manifest events, and gateway
@@ -155,7 +158,7 @@ top of [src/nostr-client.js](src/nostr-client.js): `TARGET_ARTICLE_COUNT`,
   set is unusually sparse for tagged long-form, it returns whatever was found.
   With the configured relays this almost always fills 21 in round 1.
 - **Standing-approval security.** Granting Amber permanent permission for
-  `kind:34128` means anyone with access to your development machine can replace the site
+  `kind:15128` means anyone with access to your development machine can replace the site
   content as your npub. The blast radius is limited to the nsite manifest kind
   — DMs / notes / etc. require separate approvals — and re-deploying restores
   the site. Revoke from Amber if needed.

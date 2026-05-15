@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "Static SPA that browses the latest 21 tagged kind:30023 Nostr articles. Deployed as an nsite.",
   "scripts": {
     "test": "vitest run",
