@@ -9,7 +9,9 @@ export function extractTags(event) {
     if (typeof value !== 'string') continue;
     const trimmed = value.trim();
     if (trimmed.length === 0) continue;
-    out.add(trimmed.toLowerCase());
+    const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+    if (normalized.length === 0) continue;
+    out.add(normalized.toLowerCase());
   }
   return out;
 }

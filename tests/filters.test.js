@@ -61,6 +61,26 @@ describe('extractTags', () => {
     const e = ev('a', [['t', '  spaced  ']]);
     expect(extractTags(e)).toEqual(new Set(['spaced']));
   });
+
+  it('strips a leading # so #nostr and nostr merge', () => {
+    const e = ev('a', [['t', '#nostr'], ['t', 'nostr']]);
+    expect(extractTags(e)).toEqual(new Set(['nostr']));
+  });
+
+  it('strips only one leading # (##nostr -> #nostr)', () => {
+    const e = ev('a', [['t', '##nostr']]);
+    expect(extractTags(e)).toEqual(new Set(['#nostr']));
+  });
+
+  it('strips # after trimming whitespace', () => {
+    const e = ev('a', [['t', '  #spaced  ']]);
+    expect(extractTags(e)).toEqual(new Set(['spaced']));
+  });
+
+  it('ignores a bare # value', () => {
+    const e = ev('a', [['t', '#'], ['t', 'real']]);
+    expect(extractTags(e)).toEqual(new Set(['real']));
+  });
 });
 
 describe('buildTagCounts', () => {
@@ -84,6 +104,15 @@ describe('buildTagCounts', () => {
   it('does not double-count duplicate t tags within one event', () => {
     const events = [ev('1', [['t', 'foo'], ['t', 'FOO'], ['t', 'foo']])];
     expect(buildTagCounts(events)).toEqual([['foo', 1]]);
+  });
+
+  it('merges #-prefixed and bare variants across events', () => {
+    const events = [
+      ev('1', [['t', '#nostr']]),
+      ev('2', [['t', 'nostr']]),
+      ev('3', [['t', 'NOSTR']]),
+    ];
+    expect(buildTagCounts(events)).toEqual([['nostr', 3]]);
   });
 
   it('sorts ties alphabetically', () => {
