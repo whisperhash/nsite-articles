@@ -1,0 +1,24 @@
+{
+  "name": "nostr-articles-21",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Static SPA that browses the latest 21 tagged kind:30023 Nostr articles. Deployed as an nsite.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "dev": "python3 -m http.server 8000",
+    "predeploy": "npm test && npm run build:vendor",
+    "deploy": "deno run -A jsr:@nsyte/cli deploy .",
+    "verify:deployed": "RUN_DEPLOYED=1 vitest run tests/deployed-integrity.test.js"
+  },
+  "dependencies": {
+    "nostr-tools": "2.23.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.8"
+  }
+}

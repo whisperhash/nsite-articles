@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Latest Nostr articles</title>
+    <link rel="stylesheet" href="styles/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Latest Nostr articles</h1>
+      <fieldset id="mode-toggle" class="mode-toggle" aria-label="Hashtag filter mode">
+        <legend class="sr-only">Filter mode</legend>
+        <label><input type="radio" name="mode" value="OR" checked> Match <strong>any</strong></label>
+        <label><input type="radio" name="mode" value="AND"> Match <strong>all</strong></label>
+      </fieldset>
+    </header>
+    <div id="status" class="status" role="status" hidden></div>
+    <main class="layout">
+      <aside class="sidebar">
+        <h2>Hashtags</h2>
+        <div id="hashtags"></div>
+      </aside>
+      <section class="articles" aria-label="Articles">
+        <div id="articles" class="article-grid"></div>
+      </section>
+    </main>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>
