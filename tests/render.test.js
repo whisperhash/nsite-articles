@@ -10,14 +10,21 @@ import {
 import { createState } from '../src/state.js';
 import { buildTagCounts, filterEvents } from '../src/filters.js';
 
-const article = ({ id, ts, title = 'A title', pubkey = 'a'.repeat(64), tags = [['t', 'rust']] }) => ({
+const article = ({
+  id,
+  ts,
+  title = 'A title',
+  pubkey = 'a'.repeat(64),
+  tags = [['t', 'rust']],
+  d = 'slug',
+}) => ({
   id,
   kind: 30023,
   pubkey,
   created_at: ts,
   content: '',
   sig: '',
-  tags: [['title', title], ...tags],
+  tags: [['title', title], ['d', d], ...tags],
 });
 
 describe('renderArticles', () => {
@@ -38,6 +45,37 @@ describe('renderArticles', () => {
     expect(cards[0].querySelector('.card-name').textContent).toBe('Alice');
     expect(cards[0].querySelector('.card-avatar').src).toBe('https://x/y.png');
     expect(cards[0].dataset.id).toBe('1');
+  });
+
+  it('wraps the whole card in an external link to njump.to with naddr', () => {
+    const ev = article({ id: '1', ts: 100, title: 'Hello', d: 'my-slug' });
+    renderArticles(container, [ev], new Map());
+    const card = container.querySelector('.card');
+    const anchor = card.querySelector('a.card-link');
+    expect(anchor).not.toBeNull();
+    expect(anchor.getAttribute('href')).toMatch(/^https:\/\/njump\.to\/naddr1/);
+    expect(anchor.getAttribute('target')).toBe('_blank');
+    expect(anchor.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(anchor.querySelector('.card-title').textContent).toBe('Hello');
+    expect(anchor.querySelector('.card-author')).not.toBeNull();
+    expect(anchor.querySelector('.card-time')).not.toBeNull();
+  });
+
+  it('uses a non-anchor wrapper when d tag is missing (no clickable target)', () => {
+    const ev = {
+      id: '1',
+      kind: 30023,
+      pubkey: 'a'.repeat(64),
+      created_at: 100,
+      content: '',
+      sig: '',
+      tags: [['title', 'No slug']],
+    };
+    renderArticles(container, [ev], new Map());
+    const card = container.querySelector('.card');
+    expect(card.querySelector('a.card-link')).toBeNull();
+    expect(card.querySelector('div.card-link')).not.toBeNull();
+    expect(card.querySelector('.card-title').textContent).toBe('No slug');
   });
 
   it('shows empty state when no articles', () => {

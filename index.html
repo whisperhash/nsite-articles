@@ -9,15 +9,15 @@
   <body>
     <header class="topbar">
       <h1>Latest Nostr articles</h1>
-      <fieldset id="mode-toggle" class="mode-toggle" aria-label="Hashtag filter mode">
-        <legend class="sr-only">Filter mode</legend>
-        <label><input type="radio" name="mode" value="OR" checked> Match <strong>any</strong></label>
-        <label><input type="radio" name="mode" value="AND"> Match <strong>all</strong></label>
-      </fieldset>
     </header>
     <div id="status" class="status" role="status" hidden></div>
     <main class="layout">
       <aside class="sidebar">
+        <fieldset id="mode-toggle" class="mode-toggle" aria-label="Hashtag filter mode">
+          <legend class="sr-only">Filter mode</legend>
+          <label><input type="radio" name="mode" value="OR" checked> Match <strong>any</strong></label>
+          <label><input type="radio" name="mode" value="AND"> Match <strong>all</strong></label>
+        </fieldset>
         <h2>Hashtags</h2>
         <div id="hashtags"></div>
       </aside>

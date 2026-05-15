@@ -1,5 +1,7 @@
 import { nip19 } from '../vendor/nostr-tools.js';
-import { extractTags } from './filters.js';
+import { RUNTIME_RELAYS } from './relays.js';
+
+const ARTICLE_VIEWER = 'https://njump.to';
 
 export function renderArticles(container, articles, profiles) {
   container.replaceChildren();
@@ -54,8 +56,48 @@ function buildCard(event, profile) {
   time.title = date.toLocaleString();
   time.textContent = relativeTime(date);
 
-  card.append(header, title, time);
+  const link = articleUrl(event);
+  let inner;
+  if (link) {
+    inner = document.createElement('a');
+    inner.href = link;
+    inner.target = '_blank';
+    inner.rel = 'noopener noreferrer';
+  } else {
+    inner = document.createElement('div');
+  }
+  inner.className = 'card-link';
+  inner.append(header, title, time);
+
+  card.appendChild(inner);
   return card;
+}
+
+function articleUrl(event) {
+  if (typeof event?.pubkey !== 'string' || typeof event?.kind !== 'number') return null;
+  const identifier = findDTagValue(event);
+  if (identifier === undefined) return null;
+  try {
+    const naddr = nip19.naddrEncode({
+      identifier,
+      pubkey: event.pubkey,
+      kind: event.kind,
+      relays: RUNTIME_RELAYS,
+    });
+    return `${ARTICLE_VIEWER}/${naddr}`;
+  } catch {
+    return null;
+  }
+}
+
+function findDTagValue(event) {
+  if (!Array.isArray(event?.tags)) return undefined;
+  for (const tag of event.tags) {
+    if (Array.isArray(tag) && tag[0] === 'd' && typeof tag[1] === 'string') {
+      return tag[1];
+    }
+  }
+  return undefined;
 }
 
 function articleTitle(event) {
@@ -151,4 +193,4 @@ export function renderStatus(container, message) {
   container.textContent = message;
 }
 
-export const __test = { articleTitle, profileDisplayName, truncateNpub, extractTags };
+export const __test = { articleTitle, articleUrl, profileDisplayName, truncateNpub };

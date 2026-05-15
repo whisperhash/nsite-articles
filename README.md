@@ -3,8 +3,9 @@
 A single-page static web app that fetches the latest 21 Nostr long-form articles
 (`kind:30023`, NIP-23) that carry at least one `t` (hashtag) tag from a small
 set of relays. Articles are displayed with title, author name + picture, and
-relative timestamp. A sidebar of hashtags (with counts) lets you filter the
-visible set via an AND / OR toggle.
+relative timestamp. Clicking a card opens the article on [njump.to](https://njump.to)
+(via a NIP-19 `naddr` with relay hints). A sidebar of hashtags (with counts)
+lets you filter the visible set via an AND / OR toggle.
 
 The site is built to run entirely in the browser and is deployed as an **nsite**
 (NIP-512 / kind:34128 manifest + blobs on [Blossom](https://github.com/hzrd149/blossom)
@@ -54,13 +55,14 @@ npm test                # run once
 npm run test:watch      # vitest watch mode
 ```
 
-Three suites run in default mode (~55 tests, sub-second):
+Default `npm test` runs (sub-second):
 - `filters.test.js` — pure-function coverage of tag extraction / counts / AND-OR filter.
+- `state.test.js` — pub/sub store: get, object & functional update, multi-subscriber, unsubscribe.
 - `nostr-client.test.js` — paginated fetch + profile lookup against a mock `SimplePool`.
-- `render.test.js` — jsdom; cards, hashtag list, mode toggle, integration with state + filters.
+- `render.test.js` — jsdom; cards, whole-card link, hashtag list, mode toggle, integration with state + filters.
 
-A fourth suite, `deployed-integrity.test.js`, is **gated** on `RUN_DEPLOYED=1` and
-verifies a real deployment (see [Verifying a deploy](#verifying-a-deploy)).
+`deployed-integrity.test.js` is **gated** on `RUN_DEPLOYED=1` and verifies a
+real deployment (see [Verifying a deploy](#verifying-a-deploy)).
 
 ## Deploying as an nsite
 
