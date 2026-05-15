@@ -53,8 +53,8 @@ function buildCard(event, profile) {
   time.className = 'card-time';
   const date = new Date(event.created_at * 1000);
   time.dateTime = date.toISOString();
-  time.title = date.toLocaleString();
-  time.textContent = relativeTime(date);
+  time.title = formatTimestampPrecise(date);
+  time.textContent = formatTimestamp(date);
 
   const link = articleUrl(event);
   let inner;
@@ -129,20 +129,20 @@ function truncateNpub(pubkey) {
   }
 }
 
-function relativeTime(date) {
-  const diffMs = Date.now() - date.getTime();
-  const sec = Math.round(diffMs / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const days = Math.round(hr / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  const years = Math.round(months / 12);
-  return `${years}y ago`;
+function formatTimestamp(date, locale, options) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    ...options,
+  }).format(date);
+}
+
+function formatTimestampPrecise(date, locale, options) {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: 'full',
+    timeStyle: 'long',
+    ...options,
+  }).format(date);
 }
 
 export function renderHashtags(container, tagCounts, selectedTags) {
@@ -193,4 +193,11 @@ export function renderStatus(container, message) {
   container.textContent = message;
 }
 
-export const __test = { articleTitle, articleUrl, profileDisplayName, truncateNpub };
+export const __test = {
+  articleTitle,
+  articleUrl,
+  profileDisplayName,
+  truncateNpub,
+  formatTimestamp,
+  formatTimestampPrecise,
+};

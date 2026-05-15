@@ -239,4 +239,38 @@ describe('internal helpers', () => {
     expect(out.startsWith('npub1')).toBe(true);
     expect(out).toMatch(/…/);
   });
+
+  it('formatTimestamp returns a locale-aware medium date + short time', () => {
+    const date = new Date('2026-05-15T14:30:00Z');
+    const out = __test.formatTimestamp(date, 'en-US', { timeZone: 'UTC' });
+    expect(out).toContain('May 15, 2026');
+    expect(out).toMatch(/2:30/);
+    expect(out).toMatch(/PM/);
+  });
+
+  it('formatTimestampPrecise includes weekday and timezone', () => {
+    const date = new Date('2026-05-15T14:30:00Z');
+    const out = __test.formatTimestampPrecise(date, 'en-US', { timeZone: 'UTC' });
+    expect(out).toContain('Friday');
+    expect(out).toContain('May 15, 2026');
+    expect(out).toContain('UTC');
+    expect(out.length).toBeGreaterThan(
+      __test.formatTimestamp(date, 'en-US', { timeZone: 'UTC' }).length,
+    );
+  });
+});
+
+describe('card timestamp', () => {
+  it("renders the article's created_at as a friendly local timestamp", () => {
+    const container = document.createElement('div');
+    const ts = Math.floor(new Date('2026-05-15T14:30:00Z').getTime() / 1000);
+    const ev = article({ id: '1', ts });
+    renderArticles(container, [ev], new Map());
+    const timeEl = container.querySelector('.card-time');
+    expect(timeEl).not.toBeNull();
+    expect(timeEl.getAttribute('datetime')).toBe('2026-05-15T14:30:00.000Z');
+    expect(timeEl.textContent).toMatch(/2026/);
+    expect(timeEl.title).toMatch(/2026/);
+    expect(timeEl.title.length).toBeGreaterThan(timeEl.textContent.length);
+  });
 });
