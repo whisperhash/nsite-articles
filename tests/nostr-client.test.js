@@ -1,10 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import {
   fetchArticles,
-  fetchProfiles,
+  streamProfiles,
   ARTICLE_KIND,
   METADATA_KIND,
+  DEFAULT_EOSE_TIMEOUT_MS,
+  DEFAULT_PROFILE_EOSE_TIMEOUT_MS,
 } from '../src/nostr-client.js';
+
+function streamingPool(events) {
+  return {
+    calls: [],
+    subscribeManyEose(relays, filter, params) {
+      this.calls.push({ relays, filter, params });
+      queueMicrotask(() => {
+        for (const ev of events) params.onevent(ev);
+        params.onclose?.();
+      });
+      return { close() {} };
+    },
+  };
+}
 
 function makeArticle({ id, ts, tags = [['t', 'rust']], pubkey = 'pk' }) {
   return {
@@ -162,9 +178,9 @@ describe('fetchArticles', () => {
   it('returns events from a slow pool when timeout fires (empty)', async () => {
     const pool = {
       calls: [],
-      querySync(relays, filter) {
-        this.calls.push({ relays, filter });
-        return new Promise(() => {});
+      subscribeManyEose(relays, filter, params) {
+        this.calls.push({ relays, filter, params });
+        return { close() {} };
       },
     };
     const result = await fetchArticles(pool, RELAYS, {
@@ -173,72 +189,151 @@ describe('fetchArticles', () => {
     });
     expect(result).toEqual([]);
   });
-});
 
-describe('fetchProfiles', () => {
-  it('returns empty Map for no pubkeys', async () => {
-    const pool = new FakePool([]);
-    const result = await fetchProfiles(pool, RELAYS, [], { timeoutMs: 0 });
-    expect(result.size).toBe(0);
-    expect(pool.calls).toHaveLength(0);
+  it('returns partial events collected before the timeout fires', async () => {
+    const article = makeArticle({ id: 'partial', ts: 1 });
+    const pool = {
+      subscribeManyEose(_relays, _filter, params) {
+        setTimeout(() => params.onevent(article), 0);
+        return { close() {} };
+      },
+    };
+    const result = await fetchArticles(pool, RELAYS, {
+      timeoutMs: 20,
+      maxRounds: 1,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('partial');
   });
 
-  it('deduplicates input pubkeys before query', async () => {
-    const pool = new FakePool([[]]);
-    await fetchProfiles(pool, RELAYS, ['a', 'b', 'a', 'b'], { timeoutMs: 0 });
+  it('passes the filter to subscribeManyEose as a single object (SimplePool contract)', async () => {
+    let captured;
+    const pool = {
+      subscribeManyEose(_relays, filter, params) {
+        captured = filter;
+        params.onclose?.();
+        return { close() {} };
+      },
+    };
+    await fetchArticles(pool, RELAYS, { timeoutMs: 10, maxRounds: 1 });
+    expect(Array.isArray(captured)).toBe(false);
+    expect(captured).toMatchObject({ kinds: [ARTICLE_KIND] });
+  });
+});
+
+describe('streamProfiles', () => {
+  it('emits no callbacks and opens no subscription for an empty pubkey list', async () => {
+    const pool = { subscribeManyEose() { throw new Error('should not be called'); } };
+    const seen = [];
+    await streamProfiles(pool, RELAYS, [], (pk, p) => seen.push([pk, p]));
+    expect(seen).toEqual([]);
+  });
+
+  it('deduplicates input pubkeys before subscribing', async () => {
+    const pool = streamingPool([]);
+    await streamProfiles(pool, RELAYS, ['a', 'b', 'a', 'b'], () => {});
     expect(pool.calls[0].filter.authors).toEqual(['a', 'b']);
     expect(pool.calls[0].filter.kinds).toEqual([METADATA_KIND]);
   });
 
-  it('parses content JSON into profile objects', async () => {
+  it('emits parsed profiles via the callback as events arrive', async () => {
     const events = [
-      {
-        pubkey: 'p1',
-        created_at: 100,
-        content: JSON.stringify({ name: 'Alice', picture: 'https://x/y.png' }),
-      },
-      {
-        pubkey: 'p2',
-        created_at: 200,
-        content: JSON.stringify({ display_name: 'Bob' }),
-      },
+      { pubkey: 'p1', created_at: 100, content: JSON.stringify({ name: 'Alice', picture: 'https://x/y.png' }) },
+      { pubkey: 'p2', created_at: 200, content: JSON.stringify({ display_name: 'Bob' }) },
     ];
-    const pool = new FakePool([events]);
-    const result = await fetchProfiles(pool, RELAYS, ['p1', 'p2'], { timeoutMs: 0 });
-    expect(result.get('p1')).toEqual({ name: 'Alice', picture: 'https://x/y.png' });
-    expect(result.get('p2')).toEqual({ display_name: 'Bob' });
+    const seen = new Map();
+    await streamProfiles(streamingPool(events), RELAYS, ['p1', 'p2'], (pk, p) => seen.set(pk, p));
+    expect(seen.get('p1')).toEqual({ name: 'Alice', picture: 'https://x/y.png' });
+    expect(seen.get('p2')).toEqual({ display_name: 'Bob' });
   });
 
-  it('picks the newest metadata event per pubkey', async () => {
+  it('only emits the newest metadata event per pubkey', async () => {
     const events = [
       { pubkey: 'p1', created_at: 100, content: JSON.stringify({ name: 'old' }) },
       { pubkey: 'p1', created_at: 300, content: JSON.stringify({ name: 'new' }) },
       { pubkey: 'p1', created_at: 200, content: JSON.stringify({ name: 'mid' }) },
     ];
-    const pool = new FakePool([events]);
-    const result = await fetchProfiles(pool, RELAYS, ['p1'], { timeoutMs: 0 });
-    expect(result.get('p1')).toEqual({ name: 'new' });
+    const seen = [];
+    await streamProfiles(streamingPool(events), RELAYS, ['p1'], (pk, p) => seen.push([pk, p]));
+    // Older or same-timestamp events for an already-emitted pubkey are skipped.
+    expect(seen.map(([, p]) => p.name)).toEqual(['old', 'new']);
   });
 
-  it('skips events with unparseable content', async () => {
+  it('skips events with unparseable or non-object content', async () => {
     const events = [
       { pubkey: 'p1', created_at: 100, content: 'not json' },
-      { pubkey: 'p2', created_at: 100, content: JSON.stringify({ name: 'ok' }) },
+      { pubkey: 'p2', created_at: 100, content: '42' },
+      { pubkey: 'p3', created_at: 100, content: JSON.stringify({ name: 'ok' }) },
     ];
-    const pool = new FakePool([events]);
-    const result = await fetchProfiles(pool, RELAYS, ['p1', 'p2'], { timeoutMs: 0 });
-    expect(result.has('p1')).toBe(false);
-    expect(result.get('p2')).toEqual({ name: 'ok' });
+    const seen = new Map();
+    await streamProfiles(streamingPool(events), RELAYS, ['p1', 'p2', 'p3'], (pk, p) => seen.set(pk, p));
+    expect(seen.has('p1')).toBe(false);
+    expect(seen.has('p2')).toBe(false);
+    expect(seen.get('p3')).toEqual({ name: 'ok' });
   });
 
-  it('skips events whose content parses to non-object', async () => {
-    const events = [
-      { pubkey: 'p1', created_at: 100, content: '42' },
-      { pubkey: 'p2', created_at: 100, content: 'null' },
-      { pubkey: 'p3', created_at: 100, content: '"a string"' },
-    ];
-    const pool = new FakePool([events]);
-    const result = await fetchProfiles(pool, RELAYS, ['p1', 'p2', 'p3'], { timeoutMs: 0 });
-    expect(result.size).toBe(0);
+  it('passes the filter to subscribeManyEose as a single object (SimplePool contract)', async () => {
+    let captured;
+    const pool = {
+      subscribeManyEose(_relays, filter, params) {
+        captured = filter;
+        params.onclose?.();
+        return { close() {} };
+      },
+    };
+    await streamProfiles(pool, RELAYS, ['p1', 'p2'], () => {});
+    expect(Array.isArray(captured)).toBe(false);
+    expect(captured).toMatchObject({ kinds: [METADATA_KIND], authors: ['p1', 'p2'] });
   });
+
+  it('uses a generous default timeout to outlast slow relays', () => {
+    // The relay-side EOSE fallback in nostr-tools is 4.4s; our default must
+    // exceed it so slow relays can deliver all matching kind:0 events. The
+    // generous timeout is safe because the UI renders progressively per
+    // arrival — initial paint isn't blocked on this window.
+    expect(DEFAULT_PROFILE_EOSE_TIMEOUT_MS).toBeGreaterThan(DEFAULT_EOSE_TIMEOUT_MS);
+    expect(DEFAULT_PROFILE_EOSE_TIMEOUT_MS).toBeGreaterThanOrEqual(10000);
+  });
+
+  it('delivers profile events progressively, not buffered until EOSE', async () => {
+    // The core of this refactor: callbacks fire as each event arrives, so the
+    // UI can render avatars one by one rather than waiting for the whole batch.
+    let onevent;
+    let onclose;
+    const pool = {
+      subscribeManyEose(_r, _f, params) {
+        onevent = params.onevent;
+        onclose = params.onclose;
+        return { close() {} };
+      },
+    };
+    const seen = [];
+    const done = streamProfiles(pool, RELAYS, ['p1', 'p2'], (pk, p) => seen.push([pk, p.name]));
+    // Synchronously deliver one event — the callback must have fired by the
+    // time control returns here, before any EOSE/close.
+    onevent({ pubkey: 'p1', created_at: 100, content: JSON.stringify({ name: 'Alice' }) });
+    expect(seen).toEqual([['p1', 'Alice']]);
+    // A later event for the other author also fires before close.
+    onevent({ pubkey: 'p2', created_at: 200, content: JSON.stringify({ name: 'Bob' }) });
+    expect(seen).toEqual([['p1', 'Alice'], ['p2', 'Bob']]);
+    onclose();
+    await done;
+  });
+
+  it('captures profile events that arrive after the article-fetch timeout would have fired', async () => {
+    const pool = {
+      subscribeManyEose(_relays, _filter, params) {
+        // Event arrives well past the article timeout — still must come through.
+        setTimeout(() => {
+          params.onevent({ pubkey: 'p1', created_at: 100, content: JSON.stringify({ picture: 'https://x/y.png' }) });
+          params.onclose?.();
+        }, DEFAULT_EOSE_TIMEOUT_MS + 50);
+        return { close() {} };
+      },
+    };
+    const seen = new Map();
+    await streamProfiles(pool, RELAYS, ['p1'], (pk, p) => seen.set(pk, p));
+    expect(seen.get('p1')?.picture).toBe('https://x/y.png');
+  }, DEFAULT_PROFILE_EOSE_TIMEOUT_MS + 2000);
 });
+

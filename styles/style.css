@@ -201,7 +201,7 @@ html, body {
 
 .card-link:hover .card-title,
 .card-link:focus-visible .card-title {
-  color: var(--highlight);
+  color: var(--accent);
 }
 
 .card-author {

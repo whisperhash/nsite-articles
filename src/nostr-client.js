@@ -6,6 +6,11 @@ export const TARGET_ARTICLE_COUNT = 21;
 export const DEFAULT_ROUND_LIMIT = 60;
 export const DEFAULT_MAX_ROUNDS = 5;
 export const DEFAULT_EOSE_TIMEOUT_MS = 3000;
+// Profiles stream in progressively over the lifetime of one long subscription:
+// the UI updates per arrival, so a generous timeout doesn't block initial
+// render — it just gives slow relays / large result sets time to deliver
+// without us tearing the subscription down early.
+export const DEFAULT_PROFILE_EOSE_TIMEOUT_MS = 15000;
 
 export function createPool() {
   return new SimplePool();
@@ -71,30 +76,40 @@ function hasAnyTTag(event) {
   return false;
 }
 
-export async function fetchProfiles(pool, relays, pubkeys, opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_EOSE_TIMEOUT_MS;
+export function streamProfiles(pool, relays, pubkeys, onProfile, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_PROFILE_EOSE_TIMEOUT_MS;
   const unique = [...new Set(pubkeys)];
-  if (unique.length === 0) return new Map();
+  if (unique.length === 0) return Promise.resolve();
 
-  const events = await queryWithTimeout(
-    pool,
-    relays,
-    { kinds: [METADATA_KIND], authors: unique },
-    timeoutMs,
-  );
-
-  const latest = new Map();
-  for (const ev of events) {
-    const prev = latest.get(ev.pubkey);
-    if (!prev || ev.created_at > prev.created_at) latest.set(ev.pubkey, ev);
-  }
-
-  const profiles = new Map();
-  for (const [pubkey, ev] of latest) {
-    const parsed = safeParseProfile(ev.content);
-    if (parsed) profiles.set(pubkey, parsed);
-  }
-  return profiles;
+  return new Promise((resolve) => {
+    const latestTs = new Map();
+    let sub;
+    let settled = false;
+    let timer;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      try { sub?.close(); } catch { /* ignore */ }
+      resolve();
+    };
+    if (timeoutMs > 0) timer = setTimeout(finish, timeoutMs);
+    sub = pool.subscribeManyEose(
+      relays,
+      { kinds: [METADATA_KIND], authors: unique },
+      {
+        onevent: (ev) => {
+          const prev = latestTs.get(ev.pubkey);
+          if (prev !== undefined && ev.created_at <= prev) return;
+          const parsed = safeParseProfile(ev.content);
+          if (!parsed) return;
+          latestTs.set(ev.pubkey, ev.created_at);
+          onProfile(ev.pubkey, parsed);
+        },
+        onclose: finish,
+      },
+    );
+  });
 }
 
 function safeParseProfile(content) {
@@ -108,15 +123,24 @@ function safeParseProfile(content) {
 }
 
 async function queryWithTimeout(pool, relays, filter, timeoutMs) {
-  const query = pool.querySync(relays, filter);
-  if (!timeoutMs || timeoutMs <= 0) return query;
-  let timer;
-  const timeout = new Promise((resolve) => {
-    timer = setTimeout(() => resolve([]), timeoutMs);
+  if (!timeoutMs || timeoutMs <= 0) return pool.querySync(relays, filter);
+  return new Promise((resolve) => {
+    const events = [];
+    let sub;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try { sub?.close(); } catch { /* ignore */ }
+      resolve(events);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    sub = pool.subscribeManyEose(relays, filter, {
+      onevent: (ev) => events.push(ev),
+      onclose: () => {
+        clearTimeout(timer);
+        finish();
+      },
+    });
   });
-  try {
-    return await Promise.race([query, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
 }

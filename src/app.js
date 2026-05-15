@@ -1,5 +1,5 @@
 import { RUNTIME_RELAYS } from './relays.js';
-import { createPool, fetchArticles, fetchProfiles } from './nostr-client.js';
+import { createPool, fetchArticles, streamProfiles } from './nostr-client.js';
 import { buildTagCounts, filterEvents } from './filters.js';
 import { createState } from './state.js';
 import {
@@ -68,8 +68,11 @@ async function bootstrap() {
     state.update({ statusMessage: null, articles, tagCounts });
 
     const pubkeys = [...new Set(articles.map((a) => a.pubkey))];
-    const profiles = await fetchProfiles(pool, RUNTIME_RELAYS, pubkeys);
-    state.update({ profiles });
+    await streamProfiles(pool, RUNTIME_RELAYS, pubkeys, (pubkey, profile) => {
+      const next = new Map(state.get().profiles);
+      next.set(pubkey, profile);
+      state.update({ profiles: next });
+    });
   } catch (err) {
     console.error(err);
     state.update({ statusMessage: `Failed to load articles: ${err?.message ?? err}` });
