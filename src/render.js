@@ -183,14 +183,14 @@ export function renderMode(toggle, mode) {
   }
 }
 
-export function renderStatus(container, message) {
-  if (!message) {
-    container.replaceChildren();
-    container.hidden = true;
-    return;
-  }
-  container.hidden = false;
-  container.textContent = message;
+export function renderPaneMessage(container, message) {
+  container.replaceChildren();
+  if (!message) return;
+  const p = document.createElement('p');
+  p.className = 'pane-message';
+  p.textContent = message;
+  p.setAttribute('role', 'status');
+  container.appendChild(p);
 }
 
 export const __test = {

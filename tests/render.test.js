@@ -4,7 +4,7 @@ import {
   renderArticles,
   renderHashtags,
   renderMode,
-  renderStatus,
+  renderPaneMessage,
   __test,
 } from '../src/render.js';
 import { createState } from '../src/state.js';
@@ -169,22 +169,24 @@ describe('renderMode', () => {
   });
 });
 
-describe('renderStatus', () => {
-  it('shows message and reveals container', () => {
+describe('renderPaneMessage', () => {
+  it('replaces container content with a single message paragraph', () => {
     const el = document.createElement('div');
-    el.hidden = true;
-    renderStatus(el, 'Loading...');
-    expect(el.textContent).toBe('Loading...');
-    expect(el.hidden).toBe(false);
+    el.innerHTML = '<span>old</span><span>stuff</span>';
+    renderPaneMessage(el, 'Loading articles…');
+    expect(el.children).toHaveLength(1);
+    const msg = el.querySelector('.pane-message');
+    expect(msg.textContent).toBe('Loading articles…');
+    expect(msg.getAttribute('role')).toBe('status');
   });
 
-  it('clears and hides container with no message', () => {
+  it('clears the container when message is null/empty', () => {
     const el = document.createElement('div');
-    el.textContent = 'Loading...';
-    el.hidden = false;
-    renderStatus(el, null);
-    expect(el.textContent).toBe('');
-    expect(el.hidden).toBe(true);
+    el.innerHTML = '<p class="pane-message">old</p>';
+    renderPaneMessage(el, null);
+    expect(el.children).toHaveLength(0);
+    renderPaneMessage(el, '');
+    expect(el.children).toHaveLength(0);
   });
 });
 
@@ -217,6 +219,43 @@ describe('state + filter integration', () => {
 
     state.update({ selectedTags: new Set() });
     expect(container.querySelectorAll('.card')).toHaveLength(3);
+  });
+
+  it('state-driven swap: statusMessage shows pane message, otherwise shows cards', () => {
+    const pane = document.createElement('div');
+    const state = createState({
+      statusMessage: 'Loading articles…',
+      articles: [],
+      selectedTags: new Set(),
+      mode: 'OR',
+    });
+    state.subscribe((s) => {
+      if (s.statusMessage) {
+        renderPaneMessage(pane, s.statusMessage);
+      } else {
+        const visible = filterEvents(s.articles, s.selectedTags, s.mode);
+        renderArticles(pane, visible, new Map());
+      }
+    });
+
+    state.update({ statusMessage: 'Loading articles…' });
+    expect(pane.querySelector('.pane-message').textContent).toBe('Loading articles…');
+    expect(pane.querySelector('.card')).toBeNull();
+
+    state.update({
+      statusMessage: null,
+      articles: [{
+        id: '1', kind: 30023, pubkey: 'p'.repeat(64), created_at: 100,
+        content: '', sig: '', tags: [['title', 'A'], ['d', 's'], ['t', 'rust']],
+      }],
+    });
+    expect(pane.querySelector('.pane-message')).toBeNull();
+    expect(pane.querySelectorAll('.card')).toHaveLength(1);
+
+    state.update({ statusMessage: 'No tagged articles found on the configured relays.' });
+    expect(pane.querySelector('.pane-message').textContent)
+      .toBe('No tagged articles found on the configured relays.');
+    expect(pane.querySelector('.card')).toBeNull();
   });
 
   it('buildTagCounts feeds renderHashtags', () => {

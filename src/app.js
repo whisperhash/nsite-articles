@@ -6,17 +6,17 @@ import {
   renderArticles,
   renderHashtags,
   renderMode,
-  renderStatus,
+  renderPaneMessage,
 } from './render.js';
 
 const els = {
-  status: document.getElementById('status'),
   hashtags: document.getElementById('hashtags'),
   articles: document.getElementById('articles'),
   modeToggle: document.getElementById('mode-toggle'),
 };
 
 const state = createState({
+  statusMessage: 'Loading articles…',
   articles: [],
   profiles: new Map(),
   tagCounts: [],
@@ -24,12 +24,19 @@ const state = createState({
   mode: 'OR',
 });
 
-state.subscribe((s) => {
-  const visible = filterEvents(s.articles, s.selectedTags, s.mode);
-  renderArticles(els.articles, visible, s.profiles);
+function render(s) {
+  if (s.statusMessage) {
+    renderPaneMessage(els.articles, s.statusMessage);
+  } else {
+    const visible = filterEvents(s.articles, s.selectedTags, s.mode);
+    renderArticles(els.articles, visible, s.profiles);
+  }
   renderHashtags(els.hashtags, s.tagCounts, s.selectedTags);
   renderMode(els.modeToggle, s.mode);
-});
+}
+
+state.subscribe(render);
+render(state.get());
 
 els.hashtags.addEventListener('change', (e) => {
   const input = e.target;
@@ -50,28 +57,25 @@ els.modeToggle.addEventListener('change', (e) => {
 });
 
 async function bootstrap() {
-  renderStatus(els.status, 'Loading articles…');
   const pool = createPool();
   try {
     const articles = await fetchArticles(pool, RUNTIME_RELAYS);
-    const tagCounts = buildTagCounts(articles);
-    state.update({ articles, tagCounts });
-
     if (articles.length === 0) {
-      renderStatus(els.status, 'No tagged articles found on the configured relays.');
+      state.update({ statusMessage: 'No tagged articles found on the configured relays.' });
       return;
     }
+    const tagCounts = buildTagCounts(articles);
+    state.update({ statusMessage: null, articles, tagCounts });
 
-    renderStatus(els.status, `Loaded ${articles.length} article${articles.length === 1 ? '' : 's'}. Fetching authors…`);
     const pubkeys = [...new Set(articles.map((a) => a.pubkey))];
     const profiles = await fetchProfiles(pool, RUNTIME_RELAYS, pubkeys);
     state.update({ profiles });
-    renderStatus(els.status, null);
   } catch (err) {
     console.error(err);
-    renderStatus(els.status, `Failed to load articles: ${err?.message ?? err}`);
+    state.update({ statusMessage: `Failed to load articles: ${err?.message ?? err}` });
   } finally {
-    try { pool.close(RUNTIME_RELAYS); } catch { /* SimplePool.close is safe to call but may not exist on every version */ }
+    // SimplePool.close exists on v2 but guard anyway.
+    try { pool.close(RUNTIME_RELAYS); } catch { /* ignore */ }
   }
 }
 
